@@ -1,74 +1,79 @@
 name: Security CI Pipeline
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
-
-  bandit_scan:
-    name: Python Security Scan (Bandit)
+  security_scan:
+    name: Full Security Scan
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      # 1️⃣ Checkout repository
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # 2️⃣ Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
           python-version: "3.8"
-      - run: pip install bandit
-      - run: bandit -r . -lll -f json -o bandit-report.json || echo "{}" > bandit-report.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: bandit-findings
-          path: bandit-report.json
 
-  checkov_scan:
-    name: IaC Scan (Checkov)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - run: pip install checkov
-      - run: checkov -d . -o json > checkov-report.json || echo "{}" > checkov-report.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: checkov-findings
-          path: checkov-report.json
-
-  trufflehog_scan:
-    name: Secrets Detection (TruffleHog)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - run: pip install trufflehog
-      - run: trufflehog filesystem . --json > trufflehog-report.json || echo "{}" > trufflehog-report.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: trufflehog-findings
-          path: trufflehog-report.json
-
-  trivy_scan:
-    name: Container Security Scan (Trivy)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Build Docker image if Dockerfile exists
+      # 3️⃣ Install dependencies for scans
+      - name: Install security tools
         run: |
-          if [ -f Dockerfile ]; then
-            docker build -t demo-app . || echo "Docker build failed, continuing"
-          else
-            echo "No Dockerfile found, using python:3.11 as default scan image"
-            docker pull python:3.11
-            docker tag python:3.11 demo-app
-          fi
+          pip install bandit checkov
 
+      # 4️⃣ Run Bandit (Python SAST)
+      - name: Run Bandit Scan
+        run: |
+          bandit -r . -ll -f json -o Bandit-report.json || true
+
+      - name: Verify Bandit report
+        run: ls -l Bandit-report.json
+
+      # 5️⃣ Run Checkov (IaC scan)
+      - name: Run Checkov Scan
+        run: |
+          checkov -d . -o json > checkov-report.json || true
+      - name: Verify Checkov report
+        run: ls -l checkov-report.json
+
+      # 6️⃣ Run Trivy (Container scan)
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh
+          chmod +x trivy
+          mv trivy /usr/local/bin/
       - name: Run Trivy Scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: image
-          image-ref: demo-app
-          format: json
-          output: trivy-report.json
-          exit-code: 0
-          severity: HIGH,CRITICAL
+        run: |
+          # Replace 'demo-app:latest' with your Docker image
+          docker build -t demo-app:latest . || true
+          trivy image demo-app:latest --format json --output trivy-report.json || true
+      - name: Verify Trivy report
+        run: ls -l trivy-report.json
 
-      - uses: actions/upload-artifact@v4
+      # 7️⃣ Run TruffleHog (Secrets scan)
+      - name: Run TruffleHog Scan
+        uses: trufflesecurity/trufflehog-action@v4
         with:
-          name: trivy-findings
-          path: trivy-report.json
+          path: .
+          format: json
+          output: trufflehog-report.json
+
+      - name: Verify TruffleHog report
+        run: ls -l trufflehog-report.json
+
+      # 8️⃣ Upload all reports as artifacts
+      - name: Upload Security Reports
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-reports
+          path: |
+            Bandit-report.json
+            checkov-report.json
+            trivy-report.json
+            trufflehog-report.json
