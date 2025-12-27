@@ -1,4 +1,4 @@
-name: Security CI Pipeline
+name: Full Security CI Pipeline
 
 on:
   push:
@@ -6,13 +6,17 @@ on:
   pull_request:
 
 jobs:
-  security_scan:
+  security:
     name: Full Security Scan
     runs-on: ubuntu-latest
 
+    permissions:
+      security-events: write
+      contents: read
+
     steps:
     # ----------------------------------------------------
-    # 1. Checkout source code (FULL history for TruffleHog)
+    # 1. Checkout FULL git history (required for TruffleHog)
     # ----------------------------------------------------
     - name: Checkout code
       uses: actions/checkout@v4
@@ -28,62 +32,95 @@ jobs:
         python-version: "3.8"
 
     # ----------------------------------------------------
-    # 3. Python SAST - Bandit
+    # 3. Python SAST - Bandit (FAIL ONLY ON CRITICAL)
     # ----------------------------------------------------
     - name: Install Bandit
       run: pip install bandit
 
-    - name: Run Bandit Scan (Medium & High)
+    - name: Run Bandit (CRITICAL only)
       run: |
-        bandit -r . -ll -f json -o bandit-report.json || true
+        bandit -r . -lll -f sarif -o bandit.sarif
+
+    - name: Upload Bandit results to GitHub Security
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: bandit.sarif
 
     # ----------------------------------------------------
-    # 4. Secrets Scanning - TruffleHog (FIXED)
+    # 4. Secrets Detection - TruffleHog
     # ----------------------------------------------------
-    - name: Run TruffleHog Secrets Scan
+    - name: Run TruffleHog
       uses: trufflesecurity/trufflehog@main
       continue-on-error: true
       with:
         path: .
         base: HEAD~1
         head: HEAD
-        extra_args: --json
 
     # ----------------------------------------------------
-    # 5. Dependency & File System Scan - Trivy
+    # 5. Dependency & Filesystem Scan - Trivy
     # ----------------------------------------------------
-    - name: Run Trivy Scan
+    - name: Run Trivy FS Scan
       uses: aquasecurity/trivy-action@0.24.0
-      continue-on-error: true
       with:
         scan-type: fs
         scan-ref: .
-        format: json
-        output: trivy-report.json
-        severity: HIGH,CRITICAL
+        format: sarif
+        output: trivy.sarif
+        severity: CRITICAL
+
+    - name: Upload Trivy results
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: trivy.sarif
 
     # ----------------------------------------------------
-    # 6. Infrastructure as Code Scan - Checkov
+    # 6. Docker Image Scan (Cloud Run Ready)
     # ----------------------------------------------------
-    - name: Run Checkov Scan
+    - name: Build Docker Image
+      run: docker build -t demo-app:latest .
+
+    - name: Scan Docker Image with Trivy
+      uses: aquasecurity/trivy-action@0.24.0
+      with:
+        image-ref: demo-app:latest
+        format: sarif
+        output: trivy-image.sarif
+        severity: CRITICAL
+
+    - name: Upload Docker Scan Results
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: trivy-image.sarif
+
+    # ----------------------------------------------------
+    # 7. Infrastructure as Code - Checkov
+    # ----------------------------------------------------
+    - name: Run Checkov (Terraform / GCP)
       uses: bridgecrewio/checkov-action@v12
-      continue-on-error: true
       with:
         framework: terraform
-        output_format: json
-        output_file_path: checkov-report.json
+        output_format: sarif
+        output_file_path: checkov.sarif
+
+    - name: Upload Checkov results
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: checkov.sarif
 
     # ----------------------------------------------------
-    # 7. Upload ALL Security Reports (Artifacts)
+    # 8. SonarCloud (Code Quality + Security)
     # ----------------------------------------------------
-    - name: Upload Security Reports
-      if: always()
-      uses: actions/upload-artifact@v4
+    - name: SonarCloud Scan
+      uses: SonarSource/sonarcloud-github-action@v2
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       with:
-        name: security-reports
-        path: |
-          bandit-report.json
-          trivy-rep
+        args: >
+          -Dsonar.projectKey=GuntruTirupathamma_DEMO
+          -Dsonar.organization=guntrutirupathamma
+          -Dsonar.sources=.
+
 
 
 
