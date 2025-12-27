@@ -68,14 +68,13 @@ jobs:
           wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.41.2_Linux-64bit.deb
           sudo dpkg -i trivy_0.41.2_Linux-64bit.deb
 
-      # Try to build Docker image, ignore errors
-      - run: docker build -t demo-app . || echo "Docker build failed, skipping Trivy scan"
-
-      # Run Trivy if image exists
+      # Check if Dockerfile exists
       - run: |
-          if docker images demo-app | grep demo-app; then
+          if [ -f Dockerfile ]; then
+            docker build -t demo-app . || echo "Docker build failed"
             trivy image demo-app --format json --output trivy-report.json || echo "{}" > trivy-report.json
           else
+            echo "No Dockerfile found, skipping Trivy scan"
             echo "{}" > trivy-report.json
           fi
 
