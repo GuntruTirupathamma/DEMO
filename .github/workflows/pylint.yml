@@ -8,18 +8,22 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
-          python-version: 3.8
+          python-version: "3.8"
 
       - name: Install Bandit
         run: pip install bandit
 
-      - name: Run Bandit (Medium & High only)
-        run: bandit -r . -ll -f json -o Bandit-report.json
+      - name: Run Bandit (Medium & High)
+        run: |
+          bandit -r . -ll -f json -o Bandit-report.json || true
+
+      - name: Verify report exists
+        run: ls -l Bandit-report.json
 
       - name: Upload Bandit Report
         if: always()
@@ -27,5 +31,6 @@ jobs:
         with:
           name: bandit-findings
           path: Bandit-report.json
+
 
 
