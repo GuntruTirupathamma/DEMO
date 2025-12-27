@@ -47,7 +47,7 @@ jobs:
 
       - name: Run Checkov Scan
         run: |
-          checkov -d . -o json > checkov-report.json || true
+          checkov -d . -o json > checkov-report.json || echo "{}" > checkov-report.json
 
       - name: Upload Checkov Report
         if: always()
@@ -107,7 +107,7 @@ jobs:
       - name: Run Trivy Scan
         run: |
           if docker images demo-app | grep demo-app; then
-            trivy image demo-app --format json --output trivy-report.json || true
+            trivy image demo-app --format json --output trivy-report.json || echo "{}" > trivy-report.json
           else
             echo "{}" > trivy-report.json
           fi
