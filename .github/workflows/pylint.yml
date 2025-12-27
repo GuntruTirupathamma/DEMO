@@ -1,5 +1,6 @@
+
 name: Security CI Pipeline
-on: [push, pull_request]
+on: [push]
 
 jobs:
   security_scan:
@@ -17,16 +18,16 @@ jobs:
         with:
           python-version: "3.8"
 
-      # 3. Install Bandit
+      # -------------------
+      # Bandit (Python Security)
+      # -------------------
       - name: Install Bandit
         run: pip install bandit
 
-      # 4. Run Bandit Scan (Medium & High)
-      - name: Run Bandit Scan
+      - name: Run Bandit (Medium & High)
         run: |
-          bandit -r . -lll -f json -o bandit-report.json || echo "{}" > bandit-report.json
+          bandit -r . -ll -i low -f json -o bandit-report.json || echo "{}" > bandit-report.json
 
-      # 5. Upload Bandit Artifact
       - name: Upload Bandit Report
         uses: actions/upload-artifact@v4
         if: always()
@@ -34,16 +35,16 @@ jobs:
           name: bandit-findings
           path: bandit-report.json
 
-      # 6. Install Checkov
+      # -------------------
+      # Checkov (Infrastructure as Code - Terraform)
+      # -------------------
       - name: Install Checkov
         run: pip install checkov
 
-      # 7. Run Checkov Scan
-      - name: Run Checkov Scan
+      - name: Run Checkov
         run: |
-          checkov -d . -o json -o-file checkov-report.json || echo "{}" > checkov-report.json
+          checkov -d . --quiet --output json > checkov-report.json || echo "{}" > checkov-report.json
 
-      # 8. Upload Checkov Artifact
       - name: Upload Checkov Report
         uses: actions/upload-artifact@v4
         if: always()
@@ -51,38 +52,40 @@ jobs:
           name: checkov-findings
           path: checkov-report.json
 
-      # 9. Install Trivy
-      - name: Install Trivy
-        run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh
-          chmod +x ./trivy
-
-      # 10. Run Trivy Container Scan (example image: demo-app)
-      - name: Run Trivy Scan
-        run: |
-          ./trivy image demo-app --format json --output trivy-report.json || echo "{}" > trivy-report.json
-
-      # 11. Upload Trivy Artifact
-      - name: Upload Trivy Report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: trivy-findings
-          path: trivy-report.json
-
-      # 12. Install TruffleHog
+      # -------------------
+      # TruffleHog (Secrets Detection)
+      # -------------------
       - name: Install TruffleHog
         run: pip install trufflehog
 
-      # 13. Run TruffleHog Scan
-      - name: Run TruffleHog Scan
+      - name: Run TruffleHog
         run: |
-          trufflehog git . --json > trufflehog-report.json || echo "{}" > trufflehog-report.json
+          trufflehog git https://github.com/${{ github.repository }} --json > trufflehog-report.json || echo "{}" > trufflehog-report.json
 
-      # 14. Upload TruffleHog Artifact
       - name: Upload TruffleHog Report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: trufflehog-findings
           path: trufflehog-report.json
+
+      # -------------------
+      # Trivy (Container Security)
+      # -------------------
+      - name: Install Trivy
+        run: |
+          mkdir -p $HOME/.trivy
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b $HOME/.trivy
+          echo "$HOME/.trivy" >> $GITHUB_PATH
+
+      - name: Run Trivy Scan
+        run: |
+          # Replace 'demo-app' with your container image name
+          trivy image demo-app --format json --output trivy-report.json || echo "{}" > trivy-report.json
+
+      - name: Upload Trivy Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-findings
+          path: trivy-report.json
