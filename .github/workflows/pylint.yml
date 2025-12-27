@@ -1,5 +1,9 @@
 name: Security CI Pipeline
-on: [push, pull_request]
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
 
@@ -15,7 +19,8 @@ jobs:
         with:
           python-version: "3.8"
       - run: pip install bandit
-      - run: bandit -r . -lll -f json -o bandit-report.json || echo "{}" > bandit-report.json
+      - run: |
+          bandit -r . -lll -f json -o bandit-report.json || echo "{}" > bandit-report.json
       - uses: actions/upload-artifact@v4
         with:
           name: bandit-findings
@@ -30,7 +35,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - run: pip install checkov
-      - run: checkov -d . -o json > checkov-report.json || echo "{}" > checkov-report.json
+      - run: |
+          checkov -d . -o json > checkov-report.json || echo "{}" > checkov-report.json
       - uses: actions/upload-artifact@v4
         with:
           name: checkov-findings
@@ -45,7 +51,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - run: pip install trufflehog
-      - run: trufflehog filesystem . --json > trufflehog-report.json || echo "{}" > trufflehog-report.json
+      - run: |
+          trufflehog filesystem . --json > trufflehog-report.json || echo "{}" > trufflehog-report.json
       - uses: actions/upload-artifact@v4
         with:
           name: trufflehog-findings
@@ -60,23 +67,24 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      # Build Docker image only if Dockerfile exists
-      - name: Build Docker image
+      # Only build image if Dockerfile exists
+      - name: Build Docker image (if Dockerfile present)
         run: |
           if [ -f Dockerfile ]; then
             docker build -t demo-app . || echo "Docker build failed"
           else
-            echo "No Dockerfile found, skipping Docker build"
+            echo "No Dockerfile found"
           fi
 
-      # Trivy scan using official action
-      - name: Run Trivy Scan
-        uses: aquasecurity/trivy-action@v2
+      # Run Trivy Action — correct version from marketplace
+      - name: Run Trivy scan
+        uses: aquasecurity/trivy-action@0.33.1
         with:
-          image-ref: demo-app || echo "{}" > trivy-report.json
+          scan-type: image
+          image-ref: demo-app
           format: json
           output: trivy-report.json
-          exit-code: 0   # never fail workflow
+          exit-code: 0
           severity: HIGH,CRITICAL
 
       - uses: actions/upload-artifact@v4
