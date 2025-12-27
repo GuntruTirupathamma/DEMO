@@ -67,16 +67,16 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      # Only build image if Dockerfile exists
-      - name: Build Docker image (if Dockerfile present)
+      # Build Docker image if Dockerfile exists
+      - name: Build Docker image
         run: |
           if [ -f Dockerfile ]; then
             docker build -t demo-app . || echo "Docker build failed"
           else
-            echo "No Dockerfile found"
+            echo "No Dockerfile found, skipping image build"
           fi
 
-      # Run Trivy Action — correct version from marketplace
+      # Run Trivy safely
       - name: Run Trivy scan
         uses: aquasecurity/trivy-action@0.33.1
         with:
@@ -84,7 +84,7 @@ jobs:
           image-ref: demo-app
           format: json
           output: trivy-report.json
-          exit-code: 0
+          exit-code: 0  # ensures workflow doesn’t fail on vulnerabilities
           severity: HIGH,CRITICAL
 
       - uses: actions/upload-artifact@v4
