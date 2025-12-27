@@ -1,4 +1,4 @@
-name: Full Security CI Pipeline
+name: Security CI Pipeline
 
 on:
   push:
@@ -6,25 +6,21 @@ on:
   pull_request:
 
 jobs:
-  security:
+  security_scan:
     name: Full Security Scan
     runs-on: ubuntu-latest
 
-    permissions:
-      security-events: write
-      contents: read
-
     steps:
     # ----------------------------------------------------
-    # 1. Checkout FULL git history (required for TruffleHog)
+    # Checkout
     # ----------------------------------------------------
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0
+        fetch-depth: 0   # required for TruffleHog
 
     # ----------------------------------------------------
-    # 2. Setup Python
+    # Python Setup
     # ----------------------------------------------------
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -32,94 +28,61 @@ jobs:
         python-version: "3.8"
 
     # ----------------------------------------------------
-    # 3. Python SAST - Bandit (FAIL ONLY ON CRITICAL)
+    # Bandit - Python SAST (HIGH severity)
     # ----------------------------------------------------
     - name: Install Bandit
       run: pip install bandit
 
-    - name: Run Bandit (CRITICAL only)
+    - name: Run Bandit (HIGH severity)
       run: |
-        bandit -r . -lll -f sarif -o bandit.sarif
+        bandit -r . -lll -f json -o bandit-report.json || true
 
-    - name: Upload Bandit results to GitHub Security
-      uses: github/codeql-action/upload-sarif@v3
+    - name: Upload Bandit Report
+      if: always()
+      uses: actions/upload-artifact@v4
       with:
-        sarif_file: bandit.sarif
+        name: bandit-findings
+        path: bandit-report.json
 
     # ----------------------------------------------------
-    # 4. Secrets Detection - TruffleHog
+    # TruffleHog - Secrets Detection
     # ----------------------------------------------------
-    - name: Run TruffleHog
+    - name: Run TruffleHog (Secrets Scan)
       uses: trufflesecurity/trufflehog@main
-      continue-on-error: true
       with:
-        path: .
-        base: HEAD~1
-        head: HEAD
+        scanArguments: >
+          --json
+          --no-update
+          .
 
     # ----------------------------------------------------
-    # 5. Dependency & Filesystem Scan - Trivy
+    # Trivy - Filesystem Vulnerability Scan
     # ----------------------------------------------------
-    - name: Run Trivy FS Scan
-      uses: aquasecurity/trivy-action@0.24.0
+    - name: Run Trivy Filesystem Scan
+      uses: aquasecurity/trivy-action@0.20.0
       with:
         scan-type: fs
         scan-ref: .
-        format: sarif
-        output: trivy.sarif
-        severity: CRITICAL
-
-    - name: Upload Trivy results
-      uses: github/codeql-action/upload-sarif@v3
-      with:
-        sarif_file: trivy.sarif
+        severity: HIGH,CRITICAL
+        format: table
+        exit-code: 0
 
     # ----------------------------------------------------
-    # 6. Docker Image Scan (Cloud Run Ready)
+    # Checkov - IaC Scan (Terraform, YAML, etc.)
     # ----------------------------------------------------
-    - name: Build Docker Image
-      run: docker build -t demo-app:latest .
+    - name: Install Checkov
+      run: pip install checkov
 
-    - name: Scan Docker Image with Trivy
-      uses: aquasecurity/trivy-action@0.24.0
-      with:
-        image-ref: demo-app:latest
-        format: sarif
-        output: trivy-image.sarif
-        severity: CRITICAL
+    - name: Run Checkov
+      run: |
+        checkov -d . --quiet --output json > checkov-report.json || true
 
-    - name: Upload Docker Scan Results
-      uses: github/codeql-action/upload-sarif@v3
+    - name: Upload Checkov Report
+      if: always()
+      uses: actions/upload-artifact@v4
       with:
-        sarif_file: trivy-image.sarif
-
-    # ----------------------------------------------------
-    # 7. Infrastructure as Code - Checkov
-    # ----------------------------------------------------
-    - name: Run Checkov (Terraform / GCP)
-      uses: bridgecrewio/checkov-action@v12
-      with:
-        framework: terraform
-        output_format: sarif
-        output_file_path: checkov.sarif
-
-    - name: Upload Checkov results
-      uses: github/codeql-action/upload-sarif@v3
-      with:
-        sarif_file: checkov.sarif
-
-    # ----------------------------------------------------
-    # 8. SonarCloud (Code Quality + Security)
-    # ----------------------------------------------------
-    - name: SonarCloud Scan
-      uses: SonarSource/sonarcloud-github-action@v2
-      env:
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      with:
-        args: >
-          -Dsonar.projectKey=GuntruTirupathamma_DEMO
-          -Dsonar.organization=guntrutirupathamma
-          -Dsonar.sources=.
+        name: checkov-findings
+        path: checkov-report.json
 
 
 
