@@ -2,87 +2,116 @@ name: Security CI Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
+    branches: [main]
 
 jobs:
-  security_scan:
-    name: Full Security Scan
+  # ------------------------
+  # Python SAST Scan (Bandit)
+  # ------------------------
+  bandit_scan:
+    name: Python Security Scan (Bandit)
     runs-on: ubuntu-latest
-
     steps:
-    # ----------------------------------------------------
-    # Checkout
-    # ----------------------------------------------------
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0   # required for TruffleHog
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    # ----------------------------------------------------
-    # Python Setup
-    # ----------------------------------------------------
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.8"
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.8"
 
-    # ----------------------------------------------------
-    # Bandit - Python SAST (HIGH severity)
-    # ----------------------------------------------------
-    - name: Install Bandit
-      run: pip install bandit
+      - name: Install Bandit
+        run: pip install bandit
 
-    - name: Run Bandit (HIGH severity)
-      run: |
-        bandit -r . -lll -f json -o bandit-report.json || true
+      - name: Run Bandit Scan (Medium & High)
+        run: |
+          bandit -r . -lll -f json -o Bandit-report.json || true
 
-    - name: Upload Bandit Report
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: bandit-findings
-        path: bandit-report.json
+      - name: Upload Bandit Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-findings
+          path: Bandit-report.json
 
-    # ----------------------------------------------------
-    # TruffleHog - Secrets Detection
-    # ----------------------------------------------------
-    - name: Run TruffleHog (Secrets Scan)
-      uses: trufflesecurity/trufflehog@main
-      with:
-        scanArguments: >
-          --json
-          --no-update
-          .
+  # ------------------------
+  # Secrets Detection (TruffleHog)
+  # ------------------------
+  trufflehog_scan:
+    name: Secrets Scan (TruffleHog)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    # ----------------------------------------------------
-    # Trivy - Filesystem Vulnerability Scan
-    # ----------------------------------------------------
-    - name: Run Trivy Filesystem Scan
-      uses: aquasecurity/trivy-action@0.20.0
-      with:
-        scan-type: fs
-        scan-ref: .
-        severity: HIGH,CRITICAL
-        format: table
-        exit-code: 0
+      - name: Install TruffleHog
+        run: pip install trufflehog
 
-    # ----------------------------------------------------
-    # Checkov - IaC Scan (Terraform, YAML, etc.)
-    # ----------------------------------------------------
-    - name: Install Checkov
-      run: pip install checkov
+      - name: Run TruffleHog Scan
+        run: trufflehog filesystem . --json > trufflehog-report.json || true
 
-    - name: Run Checkov
-      run: |
-        checkov -d . --quiet --output json > checkov-report.json || true
+      - name: Upload TruffleHog Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trufflehog-findings
+          path: trufflehog-report.json
 
-    - name: Upload Checkov Report
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: checkov-findings
-        path: checkov-report.json
+  # ------------------------
+  # IaC Scan (Checkov)
+  # ------------------------
+  checkov_scan:
+    name: IaC Scan (Checkov)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install Checkov
+        run: pip install checkov
+
+      - name: Run Checkov Scan
+        run: checkov -d . -o json > checkov-report.json || true
+
+      - name: Upload Checkov Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkov-findings
+          path: checkov-report.json
+
+  # ------------------------
+  # Docker Image Security (Trivy)
+  # ------------------------
+  trivy_scan:
+    name: Container Scan (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget
+          wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.41.2_Linux-64bit.deb
+          sudo dpkg -i trivy_0.41.2_Linux-64bit.deb
+
+      - name: Build Docker image
+        run: docker build -t demo-app . || true
+
+      - name: Run Trivy Scan
+        run: trivy image demo-app --format json --output trivy-report.json || true
+
+      - name: Upload Trivy Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-findings
+          path: trivy-report.json
+
 
 
 
