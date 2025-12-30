@@ -1,6 +1,9 @@
-
 name: Security CI Pipeline
-on: [push]
+on:
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
   security_scan:
@@ -12,15 +15,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 2. Set up Python
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.8"
-
       
-      # Bandit (Python Security)
-      
+      # Bandit - Python Security Analysis
       - name: Install Bandit
         run: pip install bandit
 
@@ -35,9 +31,26 @@ jobs:
           name: bandit-findings
           path: bandit-report.json
 
-      
-      # Checkov (Infrastructure as Code - Terraform)
+    
+      # SonarQube - Code Quality & Security
+      - name: Set up SonarQube Scanner
+        uses: sonarsource/sonarcloud-github-action@v2
+        with:
+          organization: "your-org"
+          projectKey: "your-project-key"
+          projectName: "SecurityCI-Demo"
+          token: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Run SonarQube Scan
+        run: |
+          sonar-scanner \
+            -Dsonar.projectKey=your-project-key \
+            -Dsonar.sources=. \
+            -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+
   
+      # Checkov - Infrastructure as Code Security
       - name: Install Checkov
         run: pip install checkov
 
@@ -52,9 +65,8 @@ jobs:
           name: checkov-findings
           path: checkov-report.json
 
-      
-      # TruffleHog (Secrets Detection)
-      
+     
+      # TruffleHog - Secrets Detection
       - name: Install TruffleHog
         run: pip install trufflehog
 
@@ -69,9 +81,8 @@ jobs:
           name: trufflehog-findings
           path: trufflehog-report.json
 
-      
-      # Trivy (Container Security)
-      
+     
+      # Trivy - Container Security
       - name: Install Trivy
         run: |
           mkdir -p $HOME/.trivy
